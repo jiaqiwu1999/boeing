@@ -60,7 +60,7 @@ std::vector<GcodeReaderOutput> GcodeReader::iter_cmds() {
             }
         }
         if (this->verbose) {
-            printf("Parsing: %s \n", command);
+            printf("Parsing: %s \n", command.c_str());
         }
 
         //Parse commands that change relativity of commands
@@ -151,10 +151,10 @@ std::vector<GcodeReaderOutput> GcodeReader::iter_cmds() {
             }
         }
         // G92 marks end of layer; send trajectory
-        if (!current_traj.empty() && command.find('G92') != std::string::npos) {
+        if (!current_traj.empty() && command.find("G92") != std::string::npos) {
             send_flag = true;
         }
-        if (command.find('G0') != std::string::npos) {
+        if (command.find("G0") != std::string::npos) {
             send_flag = true;
         }   
         if (extrudeLen_sum > 850) {
@@ -180,7 +180,7 @@ std::vector<GcodeReaderOutput> GcodeReader::iter_cmds() {
         }
 
         //G1 saves to a group
-        if (command.find('G1') != std::string::npos) {
+        if (command.find("G1") != std::string::npos) {
             extrudeLen_sum += extrudeLen;
             current_traj.push_back(next_pt);
             if (std::isnan(feedrate_nxt)) {
@@ -188,7 +188,7 @@ std::vector<GcodeReaderOutput> GcodeReader::iter_cmds() {
             }
         }
 
-        if (command.find('G0') != std::string::npos) {
+        if (command.find("G0") != std::string::npos) {
             GcodeReaderOutput curr_output;
             curr_output.feedrate = feedrate;
             curr_output.extrude = 0;

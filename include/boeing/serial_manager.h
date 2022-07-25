@@ -21,9 +21,11 @@
 // sp.write_some(boost::asio::buffer(message));
 // sp.close();
 
+const static std::string END_OF_GCODE = "##END##";
+
 class SerialGcode {
     public:
-        SerialGcode(std::string port, unsigned int baud_rate, bool verbose, double timeout);
+        SerialGcode(std::string port, unsigned int baud_rate, bool verbose, int timeout);
         // SerialGcode(const SerialGcode &s);
         ~SerialGcode();
 
@@ -49,8 +51,9 @@ class SerialGcode {
 
 class ExtrusionManager {
     public:
+        ExtrusionManager();
         ExtrusionManager(SerialGcode* ser, double ex_len, double feed_init, double lead_time, double send_freq, bool absolute_mode);
-        ~ExtrusionManager() {this->ser.cleanup()}
+        ~ExtrusionManager() {this->ser->cleanup();}
 
         void update(double time_left);
 
@@ -69,7 +72,7 @@ class ExtrusionManager {
         double feed;
         double lastE = std::nanf("");
         double lastStall = std::nanf("");
-        int EAbsTarg = 0;
+        double EAbsTarg = 0;
         int stall_count = 0;
     
 

@@ -8,7 +8,7 @@
 class TrajectoryTracker {
     typedef std::pair<Eigen::VectorXd, Eigen::VectorXd> vec_pair;
     public:
-        TrajectoryTracker(std::vector<Eigen::VectorXd> traj, double thr=0.00001);
+        TrajectoryTracker(std::vector<Eigen::VectorXd> traj, double thr);
 
         double get_perc(std::vector<double> newpt);
 
@@ -21,7 +21,7 @@ class TrajectoryTracker {
         Eigen::VectorXd p1;
 
         double traj_len = 0;
-        double thr;
+        double thr = 0.00001;
         double dist_so_far = 0;
         double max_perc = 0;
 

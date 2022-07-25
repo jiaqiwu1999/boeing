@@ -1,19 +1,26 @@
-#include "arm_planner.h"
+#include "boeing/arm_planner.h"
 #define _USE_MATH_DEFINES
 
-ArmPlanner::ArmPlanner(double step_size=0.0003, double setheight=1e-3, double zheight=-0.055, double force_th=1, bool verbose=false) :
+ArmPlanner::ArmPlanner(double step_size, double setheight, double zheight, double force_th, bool verbose) :
     Node("arm_planner"),
-    move_group_(std::shared_ptr<rclcpp::Node>(std::move(this)), PLANNING_GROUP),
+    move_group_(std::shared_ptr<rclcpp::Node>(std::move(this)), "manipulator"),
     step_size(step_size),
     setheight(setheight),
     zheight(zheight),
     force_th(force_th),
     verbose(verbose)
 {
-    this->group_name = PLANNING_GROUP;
-    this->subscription_ = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
-      "wrench", 10, std::bind(&ArmPlanner::wrench_cb, this, _1));
-    this->publisher_ = this->create_publisher<moveit_msgs::msg::DisplayTrajectory>("move_group/display_planned_path", 20);
+    this->gst << 0, 1, 0, 0.134,
+                 0, 0, -1, 0.565,
+                 1, 0, 0, 0.747,
+                 0, 0, 0, 1;
+    this->group_name = "manipulator";
+    this->subscription = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
+        "wrench", 10, std::bind(&ArmPlanner::wrench_cb, this, std::placeholders::_1)
+    );
+    // std::function<void(std::shared_ptr<geometry_msgs::msg::WrenchStamped>)> func = std::bind(&ArmPlanner::wrench_cb, this, std::placeholders::_1);
+    // this->subscription = this->create_subscription<geometry_msgs::msg::WrenchStamped>("wrench", 10, func);
+    //this->publisher_ = this->create_publisher<moveit_msgs::msg::DisplayTrajectory>("move_group/display_planned_path", 20);
 }
 
 void ArmPlanner::m_plan_execute(std::vector<geometry_msgs::msg::Pose> pose_waypoints) {
@@ -31,7 +38,7 @@ void ArmPlanner::m_home() {
     std::vector<geometry_msgs::msg::Pose> pose_wp;
     pose_wp.push_back(wpose);
     this->m_plan_execute(pose_wp);
-    std::vector<double> joint_goal(-M_PI_2, -M_PI_2, -M_P, 0, M_PI_2, 0);
+    std::vector<double> joint_goal{-M_PI_2, -M_PI_2, -M_PI, 0.0, M_PI_2, 0.0};
     this->move_group_.setJointValueTarget(joint_goal);
     this->move_group_.move();
     this->move_group_.stop();
@@ -57,7 +64,7 @@ alglib::spline2dinterpolant ArmPlanner::get_plate_equation_new(Eigen::MatrixXd t
     alglib::spline2dinterpolant fx;
 
     //build spline
-    alglib::spline2dbuildbicubicv(x_, x_.size(), y_, y_.size(), f, 1, s);
+    alglib::spline2dbuildbicubicv(x_, x.size(), y_, y.size(), z_, 1, fx);
 
     this->z_deviation = z.maxCoeff() - z.minCoeff();
 
@@ -79,7 +86,8 @@ void ArmPlanner::m_waypoint_xyz(std::vector<Eigen::Vector3d> waypoints) {
     std::vector<geometry_msgs::msg::Pose> pose_waypoints;
     for (auto &wp : waypoints) {
         Eigen::Vector4d wp2 = this->transfer(wp);
-        geometry_msgs::msg::Pose pose();
+        //geometry_msgs::msg::Pose pose((float)wp2[0], (float)wp2[1], (float)wp2[2]);
+        geometry_msgs::msg::Pose pose;
         pose.position.x = (float)wp2[0];
         pose.position.y = (float)wp2[1];
         pose.position.z = (float)wp2[2];
@@ -90,12 +98,18 @@ void ArmPlanner::m_waypoint_xyz(std::vector<Eigen::Vector3d> waypoints) {
 
 }
 
+
+/**
+ * @brief 
+ * 
+ * @return Eigen::Vector3d 
+ */
 Eigen::Vector3d ArmPlanner::m_touch_bed() {
     double force_init = this->wrench.force.z;
     double force = this->wrench.force.z - force_init;//0?
 
-    while (rclcpp::ok() && force < this->force_tr) {
-        this->m_step_down();
+    while (rclcpp::ok() && force < this->force_th) {
+        this->m_step_down(0);
         force = std::abs(this->wrench.force.z - force_init);
     }
 
@@ -109,6 +123,11 @@ Eigen::Vector3d ArmPlanner::m_touch_bed() {
 
 }
 
+/**
+ * @brief run a set of equidistance points
+ * set this->calibration_pts to a set of inverted points
+ * set this->bedlevel interpolation equation
+ */
 void ArmPlanner::m_level_bed() {
     double x_origin = 0.38;
     double y_origin = -0.13;
@@ -117,47 +136,59 @@ void ArmPlanner::m_level_bed() {
 
     //std::vector<Eigen::Vector4d> sample_points;
 
-    Eigen::ArrayXd xs = Eigen::ArrayXf::LinSpaced(5, x_origin, x_origin + 4 * dx);
-    Eigen::ArrayXd ys = Eigen::ArrayXf::LinSpaced(5, y_origin, y_origin + 4 * dy);
+    Eigen::ArrayXd xs = Eigen::ArrayXd::LinSpaced(5, x_origin, x_origin + 4 * dx);
+    Eigen::ArrayXd ys = Eigen::ArrayXd::LinSpaced(5, y_origin, y_origin + 4 * dy);
 
-    Eigen::MatrixXd sample_points = Eigen::MatrixXd::Zero(xs.size() * ys.size(), 4);
-    int count = 0;
+    //Eigen::MatrixXd sample_points = Eigen::MatrixXd::Zero(xs.size() * ys.size(), 4);
+    std::vector<Eigen::Vector4d> sample_points;
+    //int count = 0;
     for (int i = 0; i < xs.size(); ++i) {
         for (int j = 0; j < ys.size(); ++j) {
-            Eigen::Vector3d v(xs[i], yx[j], this->zheight);
+            Eigen::Vector3d v(xs[i], ys[j], this->zheight);
             std::vector<Eigen::Vector3d> vec;
-            this->m_waypoint_xyz(vec.push_back(v));
+            vec.push_back(v);
+            this->m_waypoint_xyz(vec);
             Eigen::Vector3d new_vec = this->m_touch_bed();
             this->m_waypoint_xyz(vec);
 
             Eigen::Vector4d pose(new_vec[0], new_vec[1], new_vec[2], 1);
             //sample_points.push_back(this->transfer_inv(pose));
-            sample_points.row(count) = transfer_inv(pose);
-            count += 1;
+            Eigen::Vector4d transferred = transfer_inv(pose);
+            sample_points.push_back(transferred);
+            //count += 1;
         }
     }
-    std::cout << sample_points;
-    std::cout << this->ori_quat;
+    std::cout << "There are " << sample_points.size() << " sample points \n";
+    //std::cout << this->ori_quat;
     this->calibration_pts = sample_points;
-    //TODO
+    //TODO, change code structure probably
     //Interpolation check
-    this->bedlevel = this->get_plate_equation_new(sample_points);
+    //vector<Vector4d> -> matrix
+    Eigen::MatrixXd matrix = Eigen::MatrixXd::Zero(sample_points.size(), sample_points[0].size());
+    for (int i = 0; i < matrix.rows(); ++i) {
+        matrix.row(i) = sample_points[i];
+    }
+    this->bedlevel = this->get_plate_equation_new(matrix);
     this->calibrated = true;
 
 }
 
-void ArmPlanner::m_step_down(double step=0) {
+void ArmPlanner::m_step_down(double step) {
     if (step == 0) {
         step = this->step_size;
     }
     geometry_msgs::msg::Pose pose = this->move_group_.getCurrentPose().pose;
     pose.position.y += step;
     std::vector<geometry_msgs::msg::Pose> v;
-    v.push_back(pose)
+    v.push_back(pose);
     this->m_plan_execute(v);
 
 }
 
+/**
+ * @brief set ori_quat to current pose orientation -> 
+ * 
+ */
 void ArmPlanner::run_calibration_process() {
     this->m_home();
     geometry_msgs::msg::Quaternion ori_cpose = this->move_group_.getCurrentPose().pose.orientation;
@@ -188,12 +219,20 @@ std::vector<Eigen::Vector3d> ArmPlanner::adjust_waypoints(std::vector<Eigen::Vec
     return new_wps;
 }
 
-moveit_msgs::RobotTrajectory& ArmPlanner::plan_speed_constrain(Eigen::MatrixXd waypoints, double feedrate, bool follow_surface=false) {
+moveit_msgs::msg::RobotTrajectory ArmPlanner::plan_speed_constrain(std::vector<Eigen::Vector3d> waypoints, double feedrate, bool follow_surface) {
     if (this->ori_quat == geometry_msgs::msg::Quaternion()) {
         std::cout << "Orientation quaternion not initialized! NOT PLANNING";
     }
-    auto zs = waypoints.cols(2);
-    bool zconst = (zs.array().max() - zs.array().min() < this->z_deviation);
+    //find max and min of z values
+    double zmax = std::numeric_limits<double>::min();
+    double zmin = std::numeric_limits<double>::max();
+    for (auto &v : waypoints) {
+        zmin = std::min(v[2], zmin);
+        zmax = std::max(v[2], zmax);
+    }
+    std::cout << "Inside plan_speed_constrain....\n";
+    std::cout << "Z max is " << zmax << " Z min is " << zmin << "\n";
+    bool zconst = (zmax - zmin < this->z_deviation);
     if (zconst) {
         follow_surface = false;
     }
@@ -203,14 +242,13 @@ moveit_msgs::RobotTrajectory& ArmPlanner::plan_speed_constrain(Eigen::MatrixXd w
     }
 
     std::vector<geometry_msgs::msg::Pose> pose_waypoints;
-    for (int i = 0; i < waypoints.rows(); ++i) {
-        Eigen::Map<Eigen::Vector3d> vec(waypoints.rows(i).data());
-        Eigen::Vector4d wp2 = this->transfer(vec);
+    for (int i = 0; i < waypoints.size(); ++i) {
+        Eigen::Vector4d wp2 = this->transfer(waypoints[i]);
         geometry_msgs::msg::Pose pose;
-        pose.position.x = (float)wp2[0]
-        pose.position.y = (float)wp2[1]
-        pose.position.z = (float)wp2[2]
-        pose.orientation = (float)this->ori_quat;
+        pose.position.x = (float)wp2[0];
+        pose.position.y = (float)wp2[1];
+        pose.position.z = (float)wp2[2];
+        pose.orientation = this->ori_quat;
         pose_waypoints.push_back(pose);
     }
     moveit_msgs::msg::RobotTrajectory trajectory;
@@ -221,9 +259,9 @@ moveit_msgs::RobotTrajectory& ArmPlanner::plan_speed_constrain(Eigen::MatrixXd w
 
 
 
-void ArmPlanner::gcode_motion(std::vector<Eigen::Vector3d> waypoints, double feedrate) {
+void ArmPlanner::gcode_motion(std::vector<Eigen::Vector4d> waypoints, double feedrate) {
     std::vector<Eigen::Vector3d> tr_waypoints = this->adjust_waypoints(waypoints);
-    moveit_msgs::RobotTrajectory& plan = this->plan_speed_constrain(waypoints, feedrate);
+    moveit_msgs::msg::RobotTrajectory plan = this->plan_speed_constrain(tr_waypoints, feedrate, false);
     this->move_group_.execute(plan);
 }
 

@@ -1,6 +1,6 @@
 #include "boeing/traj_perc.h"
 
-TrajectoryTracker::TrajectoryTracker(std::vector<Eigen::VectorXd> traj, double thr=0.00001) :
+TrajectoryTracker::TrajectoryTracker(std::vector<Eigen::VectorXd> traj, double thr) :
     t(traj),
     thr(thr)
 {
@@ -25,7 +25,7 @@ TrajectoryTracker::TrajectoryTracker(std::vector<Eigen::VectorXd> traj, double t
 
     this->p0 = curr_pair.first;
     this->p1 = curr_pair.second;
-};
+}
 
 double TrajectoryTracker::get_perc(std::vector<double> newpt) {
     Eigen::Map<Eigen::VectorXd> eigen_pt(newpt.data(), newpt.size()); 
@@ -57,4 +57,4 @@ double TrajectoryTracker::get_perc(std::vector<double> newpt) {
     }
     return 1;
 
-};
+}

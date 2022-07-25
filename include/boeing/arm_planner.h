@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <limits>
 #include <utility>
 #include <eigen3/Eigen/Dense>
 #include <stdafx.h>
@@ -23,6 +24,7 @@
 
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/robot_trajectory/robot_trajectory.h>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -30,9 +32,9 @@
 using namespace std::chrono_literals;
 
 class ArmPlanner : public rclcpp::Node {
-  static const std::string PLANNING_GROUP = "manipulator";
+  public:
 
-  ArmPlanner(double step_size=0.0003, double setheight=1e-3, double zheight=-0.055, double force_th=1, bool verbose=false);
+  ArmPlanner(double step_size, double setheight, double zheight, double force_th, bool verbose);
 
   void m_home();
 
@@ -40,80 +42,94 @@ class ArmPlanner : public rclcpp::Node {
 
   Eigen::Vector3d m_touch_bed();
 
-  void m_step_down(double step=0);
+  void m_step_down(double step);
 
   void m_level_bed();
 
   alglib::spline2dinterpolant get_plate_equation_new(Eigen::MatrixXd three_points);
 
-  void m_plan_execute(std::vector<geometry_msgs::Pose> pose_waypoints);
+  void m_plan_execute(std::vector<geometry_msgs::msg::Pose> pose_waypoints);
 
 
   std::vector<Eigen::Vector3d> adjust_waypoints(std::vector<Eigen::Vector4d> waypoints);
 
-  moveit_msgs::msg::RobotTrajectory& plan_speed_constrain(std::vector<Eigen::Vector3d> waypoints, double feedrate, bool follow_surface=false);
+  moveit_msgs::msg::RobotTrajectory plan_speed_constrain(std::vector<Eigen::Vector3d> waypoints, double feedrate, bool follow_surface);
 
 
   void m_waypoint_xyz(std::vector<Eigen::Vector3d> waypoints);
 
-  void gcode_motion(std::vector<Eigen::Vector3d> waypoints, double feedrate);
+  void gcode_motion(std::vector<Eigen::Vector4d> waypoints, double feedrate);
 
   moveit::planning_interface::MoveGroupInterface move_group_;
 
   private:
-  rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr subscription_;
-  rclcpp::Publisher<moveit_msgs::msg::DisplayTrajectory>::SharedPtr publisher_;
+  rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr subscription;
+  //TODO: keeps giving error (DisplayTrajectory type error)
+  //rclcpp::Publisher<moveit_msgs::msg::DisplayTrajectory>::SharedPtr publisher;
   //moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-  Eigen::Matrix4d gst << 0, 1, 0, 0.134,
-                         0, 0, -1, 0.565,
-                         1, 0, 0, 0.747,
-                         0, 0, 0, 1;
+  Eigen::Matrix4d gst;
   geometry_msgs::msg::Wrench wrench;
   std::string group_name = "manipulator";
   geometry_msgs::msg::Quaternion ori_quat;
   std::vector<Eigen::Vector4d> calibration_pts;
-  double step_size;
-  double setheight;
-  double zheight;
-  double force_th;
+  double step_size = 0.003;
+  double setheight = 1e-3;
+  double zheight = -0.055;
+  double force_th = 1;
   double z_deviation;
-  bool verbose;
+  bool verbose = false;
   bool calibrated = false;
   alglib::spline2dinterpolant bedlevel;
 
-  Eigen::Vector4d get_quat_vec(Eigen::Vector4d normal, Eigen::Vector4d q0) {
-    Eigen::Vector3d vv(normal[0], normal[1], normal[2]);
-    vv.normalize();
-    Eigen::Vector3d zz(0, 0, 1);
-    Eigen::Vector3d axis = zz.cross(vv);
-    double theta = asin(axis.norm());
-    if (theta != 0) {
-      Eigen::Array4d ret = q0.array() * axis.array() * theta / axis.norm();
-      return ret.vector();
-    }
-    else {
-      return q0;
-    }
-
+  void wrench_cb(const geometry_msgs::msg::WrenchStamped::SharedPtr msg) {
+    this->wrench = msg->wrench;
+    //const geometry_msgs::msg::Wrench w = msg->wrench;
+    
   }
+
+
+  // Eigen::Vector4d get_quat_vec(Eigen::Vector4d normal, Eigen::Vector4d q0) {
+  //   Eigen::Vector3d vv(normal[0], normal[1], normal[2]);
+  //   vv.normalize();
+  //   Eigen::Vector3d zz(0, 0, 1);
+  //   Eigen::Vector3d axis = zz.cross(vv);
+  //   double theta = asin(axis.norm());
+  //   if (theta != 0) {
+  //     Eigen::Array4d ret = q0.array() * axis.array() * theta / axis.norm();
+  //     Eigen::Map<Eigen::Vector4d> ret2(ret.data());
+  //     return ret2;
+  //   }
+  //   else {
+  //     return q0;
+  //   }
+
+  // }
 
   Eigen::Vector4d transfer(Eigen::Vector3d v) {
     Eigen::Vector4d vv(v[0], v[1], v[2], 1);
     return gst * vv;
   }
-  Eigen::Vector4d transfer_inv(Eigen::Vector3d v) {
+  Eigen::Vector4d transfer_inv(Eigen::Vector4d v) {
     Eigen::Vector4d vv(v[0], v[1], v[2], 1);
     //TODO
-    //use other libraries?
+    //cv version:
+    // cv::Mat cv_matrix;
+    // cv::eigen2cv(this->gst, cv_matrix);
+    // cv::Mat output_matrix;
+    // cv::invert(cv_matrix, output_matrix, cv::DECOMP_SVD);
+
+    // //convert cv mat back to eig
+    // Eigen::Matrix4d pinv;
+    // cv::cv2eigen(output_matrix, pinv);
+
     Eigen::MatrixXd pinv = this->gst.completeOrthogonalDecomposition().pseudoInverse();
-    return pinv * vv;
+    Eigen::Vector4d result = pinv * vv;
+    return result;
   }
 
-  void wrench_cb( geometry_msgs::WrenchStamped data) {
-    this->wrench = data.wrench;
-  };
 
-}
+
+};
 
 
 

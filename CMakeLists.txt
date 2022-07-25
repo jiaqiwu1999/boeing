@@ -15,19 +15,23 @@ find_package(alglib REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_msgs REQUIRED)
 
-# ament_target_dependencies(boeing Eigen3 alglib Boost)
+add_executable(gcode src/arm_planner.cpp src/gcode_reader.cpp src/serial_manager.cpp src/traj_perc.cpp src/readGCodeV3.cpp)
 
-ament_target_dependencies(
-  boeing
-  "moveit_ros_planning_interface"
-  "rclcpp"
-  "Eigen3"
-  "Boost"
-  "alglib"
+ament_target_dependencies(gcode 
+  rclcpp 
+  std_msgs 
+  geometry_msgs 
+  moveit_msgs
+  Eigen3 
+  alglib 
+  Boost 
+  moveit_ros_planning_interface 
 )
 
-target_link_libraries(boeing alglib)
+
+target_link_libraries(gcode alglib)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Arm2Proc.msg"
@@ -40,13 +44,13 @@ ament_export_dependencies(rosidl_default_runtime)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(arm_planner src/arm_planner.cpp)
-target_include_directories(arm_planner PUBLIC
+target_include_directories(gcode PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(arm_planner PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(gcode PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
-install(TARGETS arm_planner
+install(TARGETS
+  gcode
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

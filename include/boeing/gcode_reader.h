@@ -11,8 +11,8 @@
 #include <eigen3/Eigen/Dense>
 
 
-int CMD_GCODE = 0;
-int CMD_TRAJ = 1;
+static const int CMD_GCODE = 0;
+static const int CMD_TRAJ = 1;
 
 struct GcodeReaderOutput {
     int cmd_traj = CMD_TRAJ;

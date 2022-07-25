@@ -1,7 +1,7 @@
 #include "boeing/serial_manager.h"
 
 
-SerialGcode::SerialGcode(std::string port, unsigned int baud_rate, bool verbose, double timeout) : 
+SerialGcode::SerialGcode(std::string port, unsigned int baud_rate, bool verbose, int timeout) : 
     io(),
     sp(io, port), 
     verbose(verbose), 
@@ -17,7 +17,7 @@ SerialGcode::SerialGcode(std::string port, unsigned int baud_rate, bool verbose,
     }
     //serial read here?
     
-};
+}
 
 // SerialGcode::SerialGcode(const SerialGcode &s) : 
 //     {
@@ -31,14 +31,14 @@ SerialGcode::~SerialGcode() {
 }
 
 std::vector<std::string> SerialGcode::send_gcode(std::string command, bool allow_extrude=true) {
+    std::vector<std::string> outlines;
     if (!allow_extrude) {
         if (command.find("G1") != std::string::npos && command.find("E") != std::string::npos) {
-            return;
+            return outlines;
         }
     }
     clock_t t0 = clock();
     //serial write
-    std::vector<std::string> outlines;
     //TODO
     //add end of file detection
     while ((clock() - t0) / CLOCKS_PER_SEC < timeout_s) {
@@ -52,12 +52,12 @@ std::vector<std::string> SerialGcode::send_gcode(std::string command, bool allow
             }
             else {
                 line += c;
-                if (line == "TODO - END OF FILE") {
+                if (line == END_OF_GCODE) {
                     break;
                 }
             }
         }
-        if (line == "END OF FILE") {
+        if (line == END_OF_GCODE) {
             break;
         }
         outlines.push_back(line);
@@ -84,7 +84,7 @@ std::vector<std::string> SerialGcode::send_gcode(std::string command, bool allow
     std::string line = "M107\n";
     boost::asio::write(this->sp, boost::asio::buffer(line.c_str(), line.size()));
     exit(1);
-};
+}
 
 
 void SerialGcode::monitor() {
@@ -110,7 +110,7 @@ void SerialGcode::monitor() {
 
     }
     this->verbose = v;
-};
+}
 
 void SerialGcode::cleanup() {
     this->sp.close();
@@ -118,7 +118,7 @@ void SerialGcode::cleanup() {
         std::cout << "Closed serialVar!";
     }
 
-};
+}
 
 
 void SerialGcode::send_extr(double ex_len, double feedrate) {
@@ -130,7 +130,7 @@ void SerialGcode::send_extr(double ex_len, double feedrate) {
     verbose = false;
     auto resp = send_gcode(gcode_str);
     verbose = v;
-};
+}
 
 
 ExtrusionManager::ExtrusionManager(SerialGcode* s, double ex_len, double feed_init, double lead_time, double send_freq, bool absolute_mode) :
