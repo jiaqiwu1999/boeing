@@ -1,5 +1,6 @@
-# boeing in ROS2 Foxy & Moveit2 & C++
-# Required libraries:
+# Boeing arm in ROS2 Foxy & Moveit2 & C++
+The c++ version of Boeing ur5 arm
+## Required libraries:
 1. Boost
   - used for serial communication
 2. Eigen3
@@ -10,6 +11,7 @@
 4. openCV
   - used to perform matrix pseudoinverse, also gaussian filtering in mesh building
 
-# TODOs
+## TODOs
 1. Need an end-of-file line in gcode file, otherwise the boost reading may block and enter eternal waiting
-2. 
+2. Add the re-timer part of the project
+3. Add the mesh building part of the project
