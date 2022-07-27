@@ -1,8 +1,9 @@
 #include "boeing/arm_planner.h"
 #define _USE_MATH_DEFINES
 
+//https://github.com/jmb2si/ign_moveit2 (followed this example)
 ArmPlanner::ArmPlanner(double step_size, double setheight, double zheight, double force_th, bool verbose) :
-    Node("arm_planner"),
+    Node("arm_planner", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)),
     move_group_(std::shared_ptr<rclcpp::Node>(std::move(this)), "manipulator"),
     step_size(step_size),
     setheight(setheight),
@@ -26,7 +27,7 @@ ArmPlanner::ArmPlanner(double step_size, double setheight, double zheight, doubl
 void ArmPlanner::m_plan_execute(std::vector<geometry_msgs::msg::Pose> pose_waypoints) {
     moveit_msgs::msg::RobotTrajectory traj;
     this->move_group_.computeCartesianPath(pose_waypoints, 0.001, 0.0, traj);
-    this->move_group_.execute(traj);
+    this->move_group_.execute(traj, true);
 }
 
 void ArmPlanner::m_home() {
@@ -40,8 +41,12 @@ void ArmPlanner::m_home() {
     this->m_plan_execute(pose_wp);
     std::vector<double> joint_goal{-M_PI_2, -M_PI_2, -M_PI, 0.0, M_PI_2, 0.0};
     this->move_group_.setJointValueTarget(joint_goal);
-    this->move_group_.move();
-    this->move_group_.stop();
+    moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+    bool success = (this->move_group_.plan(my_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+    RCLCPP_INFO(LOGGER, "Visualizing plan 3 (constraints) %s", success ? "" : "FAILED");
+    if (success) {
+        this->move_group_.execute(my_plan);
+    }
 }
 
 alglib::real_1d_array convert_eigen_to_alg(Eigen::VectorXd eigen_vec) {
@@ -127,6 +132,7 @@ Eigen::Vector3d ArmPlanner::m_touch_bed() {
  * @brief run a set of equidistance points
  * set this->calibration_pts to a set of inverted points
  * set this->bedlevel interpolation equation
+ * Eigen::LinSpaced replace np.linspace
  */
 void ArmPlanner::m_level_bed() {
     double x_origin = 0.38;
@@ -262,7 +268,7 @@ moveit_msgs::msg::RobotTrajectory ArmPlanner::plan_speed_constrain(std::vector<E
 void ArmPlanner::gcode_motion(std::vector<Eigen::Vector4d> waypoints, double feedrate) {
     std::vector<Eigen::Vector3d> tr_waypoints = this->adjust_waypoints(waypoints);
     moveit_msgs::msg::RobotTrajectory plan = this->plan_speed_constrain(tr_waypoints, feedrate, false);
-    this->move_group_.execute(plan);
+    this->move_group_.execute(plan, true);
 }
 
 

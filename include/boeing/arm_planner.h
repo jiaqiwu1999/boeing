@@ -31,6 +31,8 @@
 
 using namespace std::chrono_literals;
 
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("move_group_demo");
+
 class ArmPlanner : public rclcpp::Node {
   public:
 

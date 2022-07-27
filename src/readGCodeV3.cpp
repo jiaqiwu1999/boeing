@@ -131,7 +131,7 @@ int main(int argc, char * argv[])
 
       std::cout << "Sending plan to execution!\n";
       //std::cout << "Finish time (est): " << tf << "\n";
-      ap->move_group_.execute(plan);
+      ap->move_group_.execute(plan, true);
 
       clock_t t0 = clock();
       //TODO tf is hardcoded
